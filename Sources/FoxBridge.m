@@ -208,7 +208,8 @@ static id FoxValue(id obj, NSString *key) {
 
     __block NSMutableArray *all = [NSMutableArray array];
     __block BOOL finished = NO;
-    __block void (^fetchPage)(uint64_t);
+    __block __weak void (^weakFetchPage)(uint64_t);
+    NSMutableArray *fetchHolder = [NSMutableArray array];
 
     FoxTIMFail fail = ^(int code, NSString *desc) {
         if (finished) return;
@@ -218,7 +219,7 @@ static id FoxValue(id obj, NSString *key) {
         });
     };
 
-    fetchPage = ^(uint64_t seq) {
+    void (^fetchPage)(uint64_t) = ^(uint64_t seq) {
         FoxMemberListSucc succ = ^(NSArray *members, uint64_t nextSeq, BOOL isFinished) {
             for (id m in members) {
                 NSString *uid = FoxValue(m, @"userID");
@@ -239,11 +240,15 @@ static id FoxValue(id obj, NSString *key) {
                 });
                 return;
             }
-            fetchPage(nextSeq);
+            NSArray *aliveHolder = fetchHolder; // 保住递归 block，避免回调前被释放
+            (void)aliveHolder;
+            weakFetchPage(nextSeq);
         };
         ((void (*)(id, SEL, id, uint32_t, uint64_t, id, id))objc_msgSend)(
             mgr, sel, groupID, (uint32_t)0, seq, succ, fail);
     };
+    weakFetchPage = fetchPage;
+    [fetchHolder addObject:fetchPage];
     fetchPage(0);
 }
 
@@ -382,3 +387,4 @@ static id FoxValue(id obj, NSString *key) {
 }
 
 @end
+
