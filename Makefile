@@ -1,5 +1,8 @@
 ARCHS = arm64
 TARGET = iphone:clang:latest:10.0
+
+include $(THEOS)/makefiles/common.mk
+
 LIBRARY_NAME = FoxFeature
 
 FoxFeature_FILES = $(wildcard Sources/*.m)
