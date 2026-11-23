@@ -1,0 +1,8 @@
+Package: com.feiouxun.foxmeta.foxassistant
+Name: 狐狸助手
+Version: 1.0.0
+Architecture: iphoneos-arm64
+Description: 狐狸Meta 群发、定时动态、自动回复、群转发与设置页入口
+Maintainer: local
+Author: local
+Section: Tweaks

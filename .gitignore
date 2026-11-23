@@ -1,0 +1,6 @@
+.theos/
+dist/
+*.ipa
+*.dylib
+__pycache__/
+.DS_Store

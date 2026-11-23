@@ -1,100 +1,47 @@
-name: Build dylib
+name: Build FoxFeature dylib
 
 on:
   push:
-    branches: [ main ]
-    paths-ignore:
-      - 'README.md'
-      - '.github/**'
+    branches: [ main, master ]
   workflow_dispatch:
-
-permissions:
-  contents: write
-
-env:
-  TARGET: hl
-  OUTPUT: hl.dylib
 
 jobs:
   build:
-    runs-on: macos-15
+    runs-on: macos-14
+    permissions:
+      contents: read
+    env:
+      THEOS: ${{ github.workspace }}/theos
+
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Prepare iOS SDK
+      - name: Install Theos
         run: |
-          set -euo pipefail
-          test -n "$(ls *.m *.c 2>/dev/null || true)" || { echo "::error::仓库根目录没有 .m/.c 源文件"; exit 1; }
-          git clone --depth 1 https://github.com/theos/sdks.git /tmp/sdks
-          SDK=$(ls -d /tmp/sdks/iPhoneOS*.sdk | sort -V | tail -1)
-          echo "SDK=$SDK" >> "$GITHUB_ENV"
-          echo "using sdk: $SDK"
+          brew install ldid xz
+          git clone --recursive --depth=1 https://github.com/theos/theos.git "$THEOS"
+          rm -rf "$THEOS/sdks"
+          git clone --depth=1 https://github.com/theos/sdks.git "$THEOS/sdks"
+          ls "$THEOS/sdks" | head
 
-      - name: Build (clang 交叉编译 arm64)
-        id: build
-        continue-on-error: true
+      - name: Build
         run: |
-          set -o pipefail
-          SRCS=$(ls *.m *.c 2>/dev/null || true)
-          echo "sources: $SRCS"
-          clang -target arm64-apple-ios14.0 \
-            -isysroot "$SDK" \
-            -dynamiclib -fobjc-arc -O2 -I. \
-            -o "$OUTPUT" \
-            $SRCS \
-            -framework UIKit \
-            -framework Foundation \
-            -framework AudioToolbox \
-            -framework Security \
-            -framework CoreGraphics \
-            -framework QuartzCore \
-            -Wl,-arch,arm64 \
-            -Wl,-platform_version,ios,14.0,15.6 \
-            2>&1 | tee build.log
-
-      - name: Inspect output
-        if: always()
-        run: |
-          ls -l *.dylib || true
-          file *.dylib || true
-          shasum -a 256 *.dylib || true
-          echo '--- build.log tail ---'
-          tail -n 40 build.log || true
-
-      - name: Package zip
-        if: steps.build.outcome == 'success'
-        run: |
-          set -euo pipefail
-          zip -j "$TARGET.zip" "$OUTPUT" README.md
-          unzip -l "$TARGET.zip"
-          shasum -a 256 "$TARGET.zip"
+          make clean THEOS="$THEOS" || true
+          make -j"$(sysctl -n hw.ncpu)" THEOS="$THEOS" FINALPACKAGE=1
+          mkdir -p dist
+          DYLIB="$(find .theos -name 'FoxFeature.dylib' -type f | head -n 1)"
+          test -n "$DYLIB"
+          cp "$DYLIB" dist/FoxFeature.dylib
+          ldid -S dist/FoxFeature.dylib
+          cp -R inject dist/inject
+          cp README.md dist/README.md
+          file dist/FoxFeature.dylib
+          ls -lh dist
 
       - name: Upload dylib
-        if: steps.build.outcome == 'success'
         uses: actions/upload-artifact@v4
         with:
-          name: dylib
-          path: hl.dylib
-
-      - name: Upload zip
-        if: steps.build.outcome == 'success'
-        uses: actions/upload-artifact@v4
-        with:
-          name: dylib-zip
-          path: hl.zip
-
-      - name: Publish build log
-        if: steps.build.outcome == 'failure'
-        run: |
-          set -euo pipefail
-          git config user.name "ci-bot"
-          git config user.email "ci-bot@users.noreply.github.com"
-          git checkout -B ci-logs
-          git add -f build.log
-          git commit -m "ci: build log (run ${{ github.run_number }})"
-          git push -f origin ci-logs
-
-      - name: Fail on build error
-        if: steps.build.outcome == 'failure'
-        run: exit 1
+          name: FoxFeature-dylib
+          path: dist
+          if-no-files-found: error
